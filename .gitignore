@@ -12,7 +12,3 @@ wheels/
 .devcontainer/
 
 .vscode/
-
-pyproject.toml
-
-uv.lock
