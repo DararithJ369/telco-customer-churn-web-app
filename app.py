@@ -1,4 +1,5 @@
 import os
+import csv
 import joblib
 import streamlit as st
 import pandas as pd
@@ -6,6 +7,7 @@ import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 from sklearn.preprocessing import StandardScaler
+from datetime import datetime
 
 st.set_page_config(
     page_title="Churn Prediction Platform",
@@ -13,12 +15,6 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
-
-# ================== THEME DETECTION ==================
-try:
-    is_dark = st.get_option("theme.base") == "dark"
-except:
-    is_dark = False
 
 # ================== MODERN CSS STYLING ==================
 st.markdown(f"""
@@ -54,10 +50,99 @@ st.markdown(f"""
 
     .block-container {{
         max-width: 1600px;
-        padding: 2.5rem 3rem;
+        padding: 1.5rem 2rem;
     }}
 
-    /* Hero Section */
+    /* ===== STICKY TOP BAR ===== */
+    .topbar {{
+        position: sticky;
+        top: 0;
+        z-index: 100;
+        background: rgba(15, 23, 42, 0.92);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        padding: 12px 24px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        color: white;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        margin-bottom: 2rem;
+        border-radius: 0 0 14px 14px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+    }}
+
+    .topbar-logo {{
+        font-weight: 700;
+        font-size: 1.05rem;
+        letter-spacing: -0.01em;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }}
+
+    .topbar-logo::before {{
+        content: '';
+        display: inline-block;
+        width: 8px;
+        height: 8px;
+        background: #10b981;
+        border-radius: 50%;
+        box-shadow: 0 0 8px rgba(16, 185, 129, 0.6);
+        animation: pulse-dot 2s ease-in-out infinite;
+    }}
+
+    @keyframes pulse-dot {{
+        0%, 100% {{ opacity: 1; transform: scale(1); }}
+        50% {{ opacity: 0.6; transform: scale(1.3); }}
+    }}
+
+    .topbar-metrics {{
+        display: flex;
+        align-items: center;
+        gap: 24px;
+    }}
+
+    .topbar-metric {{
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 1px;
+    }}
+
+    .topbar-metric-label {{
+        font-size: 0.68rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: rgba(255, 255, 255, 0.5);
+    }}
+
+    .topbar-metric-value {{
+        font-size: 0.95rem;
+        font-weight: 700;
+        color: rgba(255, 255, 255, 0.95);
+        font-family: 'JetBrains Mono', monospace;
+    }}
+
+    .topbar-divider {{
+        width: 1px;
+        height: 28px;
+        background: rgba(255, 255, 255, 0.12);
+    }}
+
+    .topbar-status {{
+        font-size: 0.82rem;
+        opacity: 0.75;
+        font-weight: 500;
+        background: rgba(16, 185, 129, 0.15);
+        border: 1px solid rgba(16, 185, 129, 0.3);
+        padding: 4px 10px;
+        border-radius: 20px;
+        color: #6ee7b7;
+    }}
+
+    /* ===== HERO SECTION ===== */
     .hero-container {{
         background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
         padding: 3.5rem 3rem;
@@ -102,17 +187,16 @@ st.markdown(f"""
         max-width: 700px;
     }}
 
-    /* Section Heading */
+    /* ===== SECTION HEADING ===== */
     .section-title {{
         font-size: 1.6rem;
         font-weight: 700;
         color: #0f172a;
         margin: 2.5rem 0 1.5rem 0;
         letter-spacing: -0.01em;
-        text-transform: none;
     }}
 
-    /* Cards */
+    /* ===== CARDS ===== */
     .info-card {{
         background: white;
         border: 1px solid #e2e8f0;
@@ -120,7 +204,7 @@ st.markdown(f"""
         padding: 2rem;
         box-shadow: 0 4px 12px rgba(15, 23, 42, 0.04);
         transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-        backdrop-filter: blur(10px);
+        animation: fadeInUp 0.5s ease forwards;
     }}
 
     .info-card:hover {{
@@ -128,6 +212,7 @@ st.markdown(f"""
         border-color: #cbd5e1;
     }}
 
+    /* ===== METRIC DISPLAY ===== */
     .metric-display {{
         background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
         border: 1px solid #e2e8f0;
@@ -165,7 +250,7 @@ st.markdown(f"""
         margin-left: 0.4rem;
     }}
 
-    /* Status Badges */
+    /* ===== STATUS BADGES ===== */
     .status-good {{
         background: linear-gradient(135deg, #ecfdf5 0%, #f0fdf4 100%);
         border: 1px solid #10b981;
@@ -224,7 +309,7 @@ st.markdown(f"""
         line-height: 1.6;
     }}
 
-    /* Summary Grid */
+    /* ===== SUMMARY GRID ===== */
     .summary-grid {{
         display: grid;
         grid-template-columns: 1fr 1fr;
@@ -243,7 +328,7 @@ st.markdown(f"""
         font-weight: 600;
     }}
 
-    /* Gauge Container */
+    /* ===== PROBABILITY SECTION ===== */
     .probability-section {{
         margin-top: 2rem;
         padding-top: 2rem;
@@ -266,14 +351,17 @@ st.markdown(f"""
         margin-top: 1rem;
     }}
 
-    /* Chart Container */
+    /* ===== CHART CONTAINER ===== */
     .chart-container {{
         background: white;
         border: 1px solid #e2e8f0;
-        border-radius: 10px;
-        padding: 1rem;   /* reduce from 1.5rem */
+        border-radius: 14px;
+        padding: 12px;
         box-shadow: 0 4px 12px rgba(15, 23, 42, 0.04);
+        width: 100%;
         height: 100%;
+        box-sizing: border-box;
+        overflow: hidden;
     }}
 
     .chart-title {{
@@ -283,8 +371,7 @@ st.markdown(f"""
         margin-bottom: 1rem;
     }}
 
-
-    /* Sidebar Styling */
+    /* ===== SIDEBAR ===== */
     section[data-testid="stSidebar"] {{
         background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
         border-right: 1px solid #e2e8f0;
@@ -309,7 +396,7 @@ st.markdown(f"""
         margin-bottom: 1rem;
     }}
 
-    /* Button Styling */
+    /* ===== BUTTON ===== */
     .stButton > button {{
         width: 100%;
         padding: 0.75rem 1.5rem;
@@ -335,7 +422,7 @@ st.markdown(f"""
         transform: translateY(0);
     }}
 
-    /* Info Box */
+    /* ===== INFO BOX ===== */
     .info-box {{
         background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
         border: 1px solid #bfdbfe;
@@ -347,7 +434,7 @@ st.markdown(f"""
         line-height: 1.6;
     }}
 
-    /* Insights Section */
+    /* ===== INSIGHTS SECTION ===== */
     .insights-box {{
         background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
         border-left: 4px solid #0284c7;
@@ -378,7 +465,7 @@ st.markdown(f"""
         font-size: 1.2rem;
     }}
 
-    /* Footer */
+    /* ===== FOOTER ===== */
     .footer {{
         text-align: center;
         color: #94a3b8;
@@ -389,7 +476,7 @@ st.markdown(f"""
         font-weight: 300;
     }}
 
-    /* Responsive Design */
+    /* ===== RESPONSIVE ===== */
     @media (max-width: 768px) {{
         .hero-title {{
             font-size: 2rem;
@@ -406,9 +493,17 @@ st.markdown(f"""
         .metric-value {{
             font-size: 1.8rem;
         }}
+
+        .topbar-metrics {{
+            gap: 12px;
+        }}
+
+        .topbar-divider {{
+            display: none;
+        }}
     }}
 
-    /* Animations */
+    /* ===== ANIMATIONS ===== */
     @keyframes fadeInUp {{
         from {{
             opacity: 0;
@@ -420,14 +515,102 @@ st.markdown(f"""
         }}
     }}
 
-    .info-card {{
-        animation: fadeInUp 0.5s ease forwards;
-    }}
-
-    /* Plotly Custom Styling */
+    /* ===== PLOTLY CUSTOM ===== */
     .plotly {{
         font-family: 'Outfit', sans-serif;
     }}
+
+    /* ===== FEEDBACK SECTION ===== */
+    .feedback-container {{
+        background: white;
+        border: 1px solid #e2e8f0;
+        border-radius: 20px;
+        padding: 2.5rem 3rem;
+        margin: 2rem 0;
+        box-shadow: 0 4px 12px rgba(15, 23, 42, 0.04);
+    }}
+
+    .feedback-title {{
+        font-size: 1.6rem;
+        font-weight: 700;
+        color: #0f172a;
+        margin: 0 0 0.5rem 0;
+        letter-spacing: -0.01em;
+    }}
+
+    .feedback-subtitle {{
+        font-size: 0.95rem;
+        color: #64748b;
+        margin-bottom: 2rem;
+        line-height: 1.5;
+    }}
+
+    .feedback-success {{
+        background: linear-gradient(135deg, #ecfdf5 0%, #f0fdf4 100%);
+        border: 1px solid #10b981;
+        border-radius: 12px;
+        padding: 1.2rem 1.5rem;
+        color: #065f46;
+        font-weight: 600;
+        font-size: 0.95rem;
+        margin-top: 1rem;
+    }}
+
+    .feedback-history-table {{
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.88rem;
+        margin-top: 1rem;
+    }}
+
+    .feedback-history-table th {{
+        background: #f8fafc;
+        color: #64748b;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        font-size: 0.78rem;
+        padding: 10px 14px;
+        border-bottom: 1px solid #e2e8f0;
+        text-align: left;
+    }}
+
+    .feedback-history-table td {{
+        padding: 10px 14px;
+        border-bottom: 1px solid #f1f5f9;
+        color: #334155;
+        vertical-align: top;
+    }}
+
+    .feedback-history-table tr:last-child td {{
+        border-bottom: none;
+    }}
+
+    .feedback-history-table tr:hover td {{
+        background: #f8fafc;
+    }}
+
+    .badge {{
+        display: inline-block;
+        padding: 3px 10px;
+        border-radius: 20px;
+        font-size: 0.78rem;
+        font-weight: 600;
+    }}
+
+    .badge-accurate {{ background: #ecfdf5; color: #065f46; }}
+    .badge-inaccurate {{ background: #fef2f2; color: #7f1d1d; }}
+    .badge-unsure {{ background: #fffbeb; color: #78350f; }}
+    .badge-churn {{ background: #fef2f2; color: #991b1b; }}
+    .badge-stay {{ background: #ecfdf5; color: #065f46; }}
+
+    .no-feedback {{
+        text-align: center;
+        padding: 2rem;
+        color: #94a3b8;
+        font-size: 0.95rem;
+    }}
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -458,66 +641,32 @@ def load_data():
 model, scaler, feature_names, config = load_artifacts()
 original_df = load_data()
 
-# Get model metrics
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
-from sklearn.model_selection import train_test_split
+# ================== STICKY HEADER BAR ==================
+st.markdown("""
+<div class="topbar">
+    <div class="topbar-logo">Churn Prediction Platform</div>
+    <div class="topbar-metrics">
+        <div class="topbar-metric">
+            <span class="topbar-metric-label">Accuracy</span>
+            <span class="topbar-metric-value">76.00%</span>
+        </div>
+        <div class="topbar-divider"></div>
+        <div class="topbar-metric">
+            <span class="topbar-metric-label">ROC-AUC</span>
+            <span class="topbar-metric-value">84.05%</span>
+        </div>
+        <div class="topbar-divider"></div>
+        <div class="topbar-metric">
+            <span class="topbar-metric-label">Features</span>
+            <span class="topbar-metric-value">30</span>
+        </div>
+        <div class="topbar-divider"></div>
+        <span class="topbar-status">Model Active</span>
+    </div>
+</div>
+""", unsafe_allow_html=True)
 
-# Calculate metrics on sample
-model_df = original_df[["gender", "SeniorCitizen", "Partner", "Dependents", "tenure", 
-                        "MultipleLines", "InternetService", "OnlineSecurity", "OnlineBackup",
-                        "DeviceProtection", "TechSupport", "StreamingTV", "StreamingMovies",
-                        "Contract", "PaperlessBilling", "PaymentMethod", "MonthlyCharges", 
-                        "TotalCharges", "Churn"]].copy()
-
-model_df["TotalCharges"] = pd.to_numeric(model_df["TotalCharges"], errors="coerce")
-model_df = model_df.dropna()
-model_accuracy = 0.7459  # From your training results
-
-# ================== PREPROCESSING FUNCTION ==================
-def preprocess_user_input(user_data: dict) -> pd.DataFrame:
-    """Convert user input to preprocessed feature matrix matching training data"""
-    input_df = pd.DataFrame([user_data])
-    
-    # Create engineered features
-    input_df["AvergeCharges"] = input_df["TotalCharges"] / (input_df["tenure"] + 1)
-    input_df["charges_per_month"] = input_df["MonthlyCharges"] / (input_df["tenure"] + 1)
-    
-    # Create tenure groups
-    bins = [0, 12, 24, np.inf]
-    labels = [0, 1, 2]
-    input_df["tenure_group"] = pd.cut(input_df["tenure"], bins=bins, labels=labels, right=False)
-    input_df["tenure_group"] = input_df["tenure_group"].astype(int)
-    
-    # Drop columns
-    cols_to_drop = [col for col in input_df.columns if col in ["TotalCharges", "gender", "PhoneService"]]
-    input_df.drop(columns=cols_to_drop, inplace=True, errors='ignore')
-    
-    # Encode binary columns
-    binary_mapping = {"yes": 1, "no": 0}
-    for col in ["Partner", "Dependents", "PaperlessBilling"]:
-        if col in input_df.columns:
-            input_df[col] = input_df[col].str.lower().map(binary_mapping)
-    
-    # One-hot encode categorical
-    multi_cols = ["MultipleLines", "InternetService", "OnlineSecurity", "OnlineBackup",
-                  "DeviceProtection", "TechSupport", "StreamingTV", "StreamingMovies",
-                  "Contract", "PaymentMethod"]
-    
-    for col in multi_cols:
-        if col in input_df.columns:
-            input_df = pd.get_dummies(input_df, columns=[col], drop_first=True)
-    
-    # Ensure all features present
-    for feature in feature_names:
-        if feature not in input_df.columns:
-            input_df[feature] = 0
-    
-    input_df = input_df[feature_names]
-    input_df_scaled = scaler.transform(input_df.values)
-    
-    return input_df_scaled
-
-# ================== HEADER ==================
+# ================== HERO SECTION ==================
 st.markdown("""
 <div class="hero-container">
     <div class="hero-content">
@@ -580,7 +729,7 @@ streaming_movies = st.sidebar.selectbox("Streaming Movies", ["No internet servic
 st.sidebar.markdown("### Account Details", unsafe_allow_html=True)
 contract = st.sidebar.selectbox("Contract Type", ["Month-to-month", "One year", "Two year"])
 paperless_billing = st.sidebar.radio("Paperless Billing", ["No", "Yes"], horizontal=True)
-payment_method = st.sidebar.selectbox("Payment Method", 
+payment_method = st.sidebar.selectbox("Payment Method",
     ["Electronic check", "Mailed check", "Bank transfer (automatic)", "Credit card (automatic)"])
 
 st.sidebar.markdown("### Service Metrics", unsafe_allow_html=True)
@@ -589,6 +738,50 @@ monthly_charges = st.sidebar.slider("Monthly Charges ($)", 0.0, 120.0, 65.0, ste
 total_charges = st.sidebar.slider("Total Charges ($)", 0.0, 8000.0, 780.0, step=50.0)
 
 predict_btn = st.sidebar.button("Generate Prediction", use_container_width=True)
+
+# ================== PREPROCESSING FUNCTION ==================
+def preprocess_user_input(user_data: dict) -> pd.DataFrame:
+    """Convert user input to preprocessed feature matrix matching training data"""
+    input_df = pd.DataFrame([user_data])
+
+    # Create engineered features
+    input_df["AvergeCharges"] = input_df["TotalCharges"] / (input_df["tenure"] + 1)
+    input_df["charges_per_month"] = input_df["MonthlyCharges"] / (input_df["tenure"] + 1)
+
+    # Create tenure groups
+    bins = [0, 12, 24, np.inf]
+    labels = [0, 1, 2]
+    input_df["tenure_group"] = pd.cut(input_df["tenure"], bins=bins, labels=labels, right=False)
+    input_df["tenure_group"] = input_df["tenure_group"].astype(int)
+
+    # Drop columns
+    cols_to_drop = [col for col in input_df.columns if col in ["TotalCharges", "gender", "PhoneService"]]
+    input_df.drop(columns=cols_to_drop, inplace=True, errors='ignore')
+
+    # Encode binary columns
+    binary_mapping = {"yes": 1, "no": 0}
+    for col in ["Partner", "Dependents", "PaperlessBilling"]:
+        if col in input_df.columns:
+            input_df[col] = input_df[col].str.lower().map(binary_mapping)
+
+    # One-hot encode categorical
+    multi_cols = ["MultipleLines", "InternetService", "OnlineSecurity", "OnlineBackup",
+                  "DeviceProtection", "TechSupport", "StreamingTV", "StreamingMovies",
+                  "Contract", "PaymentMethod"]
+
+    for col in multi_cols:
+        if col in input_df.columns:
+            input_df = pd.get_dummies(input_df, columns=[col], drop_first=True)
+
+    # Ensure all features present
+    for feature in feature_names:
+        if feature not in input_df.columns:
+            input_df[feature] = 0
+
+    input_df = input_df[feature_names]
+    input_df_scaled = scaler.transform(input_df.values)
+
+    return input_df_scaled
 
 # ================== PREPARE INPUT ==================
 user_input = {
@@ -671,7 +864,8 @@ with right_col:
 
         st.markdown('<div class="probability-section">', unsafe_allow_html=True)
         st.markdown('<div class="probability-label">Churn Probability Score</div>', unsafe_allow_html=True)
-        
+
+        # Detect dark mode for gauge colors
         fig_gauge = go.Figure(go.Indicator(
             mode="gauge+number",
             value=pred_prob * 100,
@@ -716,6 +910,13 @@ st.markdown("<br>", unsafe_allow_html=True)
 # ================== EDA SECTION ==================
 st.markdown('<h2 class="section-title">Market Analytics Dashboard</h2>', unsafe_allow_html=True)
 
+# Shared Plotly layout defaults
+_plotly_common = dict(
+    font={'family': 'Outfit'},
+    paper_bgcolor='rgba(0,0,0,0)',
+    plot_bgcolor='rgba(0,0,0,0)',
+    height=350,
+)
 
 col1, col2 = st.columns(2, gap="large")
 
@@ -728,15 +929,9 @@ with col1:
         color_discrete_map={"Yes": "#ef4444", "No": "#10b981"}
     )
     fig1.update_traces(textposition='inside', textinfo='percent+label')
-    fig1.update_layout(
-        height=350,
-        font={'family': 'Outfit'},
-        paper_bgcolor='white',
-        plot_bgcolor='white',
-        showlegend=True
-    )
+    fig1.update_layout(**_plotly_common, showlegend=True)
     st.markdown('<div class="chart-container">', unsafe_allow_html=True)
-    st.plotly_chart(fig1, use_container_width=True, config={'responsive': True})
+    st.plotly_chart(fig1, use_container_width=True, config={"responsive": True})
     st.markdown('</div>', unsafe_allow_html=True)
 
 with col2:
@@ -750,14 +945,7 @@ with col2:
         title="Churn by Contract Type",
         color_discrete_map={"Yes": "#ef4444", "No": "#10b981"}
     )
-    fig2.update_layout(
-        height=350,
-        font={'family': 'Outfit'},
-        paper_bgcolor='white',
-        plot_bgcolor='rgba(240,240,240,0.5)',
-        xaxis_title="",
-        yaxis_title="Customer Count"
-    )
+    fig2.update_layout(**_plotly_common, xaxis_title="", yaxis_title="Customer Count")
     st.markdown('<div class="chart-container">', unsafe_allow_html=True)
     st.plotly_chart(fig2, use_container_width=True, config={'responsive': True})
     st.markdown('</div>', unsafe_allow_html=True)
@@ -775,14 +963,7 @@ with col3:
         title="Churn by Internet Service",
         color_discrete_map={"Yes": "#ef4444", "No": "#10b981"}
     )
-    fig3.update_layout(
-        height=350,
-        font={'family': 'Outfit'},
-        paper_bgcolor='white',
-        plot_bgcolor='rgba(240,240,240,0.5)',
-        xaxis_title="",
-        yaxis_title="Customer Count"
-    )
+    fig3.update_layout(**_plotly_common, xaxis_title="", yaxis_title="Customer Count")
     st.markdown('<div class="chart-container">', unsafe_allow_html=True)
     st.plotly_chart(fig3, use_container_width=True, config={'responsive': True})
     st.markdown('</div>', unsafe_allow_html=True)
@@ -796,14 +977,7 @@ with col4:
         title="Monthly Charges Distribution",
         color_discrete_map={"Yes": "#ef4444", "No": "#10b981"}
     )
-    fig4.update_layout(
-        height=350,
-        font={'family': 'Outfit'},
-        paper_bgcolor='white',
-        plot_bgcolor='rgba(240,240,240,0.5)',
-        xaxis_title="Churn Status",
-        yaxis_title="Monthly Charges ($)"
-    )
+    fig4.update_layout(**_plotly_common, xaxis_title="Churn Status", yaxis_title="Monthly Charges ($)")
     st.markdown('<div class="chart-container">', unsafe_allow_html=True)
     st.plotly_chart(fig4, use_container_width=True, config={'responsive': True})
     st.markdown('</div>', unsafe_allow_html=True)
@@ -820,22 +994,15 @@ with col5:
         title="Customer Tenure Distribution",
         color_discrete_map={"Yes": "#ef4444", "No": "#10b981"}
     )
-    fig5.update_layout(
-        height=350,
-        font={'family': 'Outfit'},
-        paper_bgcolor='white',
-        plot_bgcolor='rgba(240,240,240,0.5)',
-        xaxis_title="Tenure (months)",
-        yaxis_title="Count"
-    )
+    fig5.update_layout(**_plotly_common, xaxis_title="Tenure (months)", yaxis_title="Count")
     st.markdown('<div class="chart-container">', unsafe_allow_html=True)
     st.plotly_chart(fig5, use_container_width=True, config={'responsive': True})
     st.markdown('</div>', unsafe_allow_html=True)
 
 with col6:
-    tech_support = original_df.groupby(["TechSupport", "Churn"]).size().reset_index(name="Count")
+    tech_support_churn = original_df.groupby(["TechSupport", "Churn"]).size().reset_index(name="Count")
     fig6 = px.bar(
-        tech_support,
+        tech_support_churn,
         x="TechSupport",
         y="Count",
         color="Churn",
@@ -843,14 +1010,7 @@ with col6:
         title="Churn by Tech Support Subscription",
         color_discrete_map={"Yes": "#ef4444", "No": "#10b981"}
     )
-    fig6.update_layout(
-        height=350,
-        font={'family': 'Outfit'},
-        paper_bgcolor='white',
-        plot_bgcolor='rgba(240,240,240,0.5)',
-        xaxis_title="",
-        yaxis_title="Customer Count"
-    )
+    fig6.update_layout(**_plotly_common, xaxis_title="", yaxis_title="Customer Count")
     st.markdown('<div class="chart-container">', unsafe_allow_html=True)
     st.plotly_chart(fig6, use_container_width=True, config={'responsive': True})
     st.markdown('</div>', unsafe_allow_html=True)
@@ -870,6 +1030,152 @@ st.markdown("""
     </div>
 </div>
 """, unsafe_allow_html=True)
+
+
+# ================== FEEDBACK HELPERS ==================
+FEEDBACK_FILE = "feedback_log.csv"
+FEEDBACK_COLUMNS = ["timestamp", "prediction", "churn_probability", "contract",
+                    "internet_service", "tenure", "monthly_charges",
+                    "accuracy_rating", "comment"]
+
+def init_feedback_file():
+    """Create CSV with headers if it doesn't exist."""
+    if not os.path.exists(FEEDBACK_FILE):
+        with open(FEEDBACK_FILE, "w", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=FEEDBACK_COLUMNS)
+            writer.writeheader()
+
+def save_feedback(record: dict):
+    """Append a feedback row to the CSV."""
+    init_feedback_file()
+    with open(FEEDBACK_FILE, "a", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=FEEDBACK_COLUMNS)
+        writer.writerow(record)
+
+def load_feedback() -> pd.DataFrame:
+    """Load all stored feedback; return empty DataFrame if none yet."""
+    init_feedback_file()
+    try:
+        df = pd.read_csv(FEEDBACK_FILE)
+        return df if not df.empty else pd.DataFrame(columns=FEEDBACK_COLUMNS)
+    except Exception:
+        return pd.DataFrame(columns=FEEDBACK_COLUMNS)
+
+
+# ================== USER FEEDBACK ==================
+st.markdown('<h2 class="section-title">Prediction Feedback</h2>', unsafe_allow_html=True)
+
+st.markdown("""
+<div class="feedback-container">
+    <div class="feedback-title">Was this prediction helpful?</div>
+    <div class="feedback-subtitle">Your feedback helps improve the model's accuracy over time.</div>
+</div>
+""", unsafe_allow_html=True)
+
+with st.container():
+    fb_col1, fb_col2 = st.columns([1, 1], gap="large")
+
+    with fb_col1:
+        st.markdown("**How accurate was the prediction?**")
+        accuracy_rating = st.radio(
+            "Accuracy",
+            options=["Accurate", "Inaccurate", "Unsure"],
+            label_visibility="collapsed",
+            key="accuracy_rating"
+        )
+
+        st.markdown("**Any additional comments?**")
+        comment = st.text_area(
+            "Comment",
+            placeholder="e.g. The model missed that this customer recently upgraded their plan...",
+            height=110,
+            label_visibility="collapsed",
+            key="feedback_comment"
+        )
+
+        submit_feedback = st.button("Submit Feedback", key="submit_feedback_btn")
+
+        if submit_feedback:
+            rating_clean = accuracy_rating.split("  ")[-1]  # strip emoji prefix
+            record = {
+                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "prediction": prediction,
+                "churn_probability": f"{pred_prob:.3f}",
+                "contract": contract,
+                "internet_service": internet_service,
+                "tenure": tenure,
+                "monthly_charges": monthly_charges,
+                "accuracy_rating": rating_clean,
+                "comment": comment.strip() if comment.strip() else "—"
+            }
+            save_feedback(record)
+            st.markdown("""
+            <div class="feedback-success">
+                ✓ &nbsp; Thank you! Your feedback has been recorded.
+            </div>
+            """, unsafe_allow_html=True)
+
+    with fb_col2:
+        st.markdown("**Recent Feedback Log**")
+        fb_df = load_feedback()
+
+        if fb_df.empty:
+            st.markdown('<div class="no-feedback">No feedback submitted yet.</div>', unsafe_allow_html=True)
+        else:
+            recent = fb_df.tail(8).iloc[::-1].reset_index(drop=True)
+
+            def rating_badge(r):
+                r = str(r)
+                if r == "Accurate":
+                    return '<span class="badge badge-accurate">Accurate</span>'
+                elif r == "Inaccurate":
+                    return '<span class="badge badge-inaccurate">Inaccurate</span>'
+                return '<span class="badge badge-unsure">Unsure</span>'
+
+            def pred_badge(p):
+                if "Churn" in str(p):
+                    return '<span class="badge badge-churn">Churn</span>'
+                return '<span class="badge badge-stay">Stay</span>'
+
+            rows_html = ""
+            for _, row in recent.iterrows():
+                rows_html += f"""
+                <tr>
+                    <td>{str(row.get("timestamp",""))[:16]}</td>
+                    <td>{pred_badge(row.get("prediction",""))}</td>
+                    <td style="font-family:'JetBrains Mono',monospace">{row.get("churn_probability","")}</td>
+                    <td>{rating_badge(row.get("accuracy_rating",""))}</td>
+                    <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{row.get("comment","")}">{row.get("comment","")}</td>
+                </tr>"""
+
+            st.markdown(f"""
+            <div style="overflow-x:auto">
+            <table class="feedback-history-table">
+                <thead>
+                    <tr>
+                        <th>Time</th>
+                        <th>Prediction</th>
+                        <th>Prob.</th>
+                        <th>Rating</th>
+                        <th>Comment</th>
+                    </tr>
+                </thead>
+                <tbody>{rows_html}</tbody>
+            </table>
+            </div>
+            """, unsafe_allow_html=True)
+
+            # Summary stats
+            total = len(fb_df)
+            accurate_pct = round((fb_df["accuracy_rating"] == "Accurate").sum() / total * 100)
+            st.markdown(
+                f"<div style='margin-top:1rem;font-size:0.85rem;color:#64748b'>"
+                f"<strong>{total}</strong> total responses &nbsp;·&nbsp; "
+                f"<strong style='color:#10b981'>{accurate_pct}%</strong> marked accurate"
+                f"</div>",
+                unsafe_allow_html=True
+            )
+
 
 # ================== FOOTER ==================
 st.markdown("""

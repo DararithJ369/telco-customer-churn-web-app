@@ -1,0 +1,4 @@
+timestamp,prediction,churn_probability,contract,internet_service,tenure,monthly_charges,accuracy_rating,comment
+2026-04-22 16:53:32,Likely to Churn,0.634,Month-to-month,DSL,12,65.0,Accurate,—
+2026-04-22 16:53:40,Likely to Churn,0.634,Month-to-month,DSL,12,65.0,Inaccurate,—
+2026-04-22 16:53:45,Likely to Churn,0.634,Month-to-month,DSL,12,65.0,Accurate,—
